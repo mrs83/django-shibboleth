@@ -15,14 +15,14 @@
 # You should have received a copy of the GNU General Public License
 # along with django_shibboleth  If not, see <http://www.gnu.org/licenses/>.
 
-VERSION = (1, 2, '', 'final', 0)
+VERSION = (1, 4, '', 'dev', 0)
 
 def get_version():
     """ Return the current version"""
     version = '%s.%s' % (VERSION[0], VERSION[1])
     if VERSION[2]:
         version = '%s.%s' % (version, VERSION[2])
-    if VERSION[3:] == ('alpha', 0):
+    if VERSION[3:] == ('dev', 0):
         version = '%s pre-alpha' % version
     else:
         if VERSION[3] != 'final':
