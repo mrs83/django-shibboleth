@@ -14,6 +14,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with django_shibboleth  If not, see <http://www.gnu.org/licenses/>.
+import json
 
 from django.conf import settings
 from django.shortcuts import render_to_response
@@ -23,7 +24,13 @@ from django.http import HttpResponseRedirect
 def parse_attributes(META):
     shib_attrs = {}
     error = False
-    for header, attr in settings.SHIB_ATTRIBUTE_MAP.items():
+    if settings.SHIB_MULTISCHOOL:
+        school = META.get('school_identifier_attribute')  # This probably isn't correct. Fix it later.
+        mapping = json.loads(settings.PATH_TO_SHIB_SETTINGS)[school]
+    else:
+        mapping = settings.SHIB_ATTRIBUTE_MAP
+
+    for header, attr in mappings.items():
         required, name = attr
         values = META.get(header, None)
         value = None
