@@ -21,16 +21,27 @@ from django.shortcuts import render_to_response
 from django.template import RequestContext
 from django.http import HttpResponseRedirect
 
+
+DEFAULT_ATTRIBUTE_MAP = {
+    "HTTP_SHIB_IDENTITY_PROVIDER": (True, "idp"),
+    "HTTP_REMOTE_USER": (True, "shared_token"),
+    "HTTP_CN": (True, "cn"),
+    "HTTP_EPPN": (True, "email"),
+    "HTTP_GIVENNAME": (False, "first_name"),
+    "HTTP_SN": (False, "last_name"),
+}
+
+
 def parse_attributes(META):
     shib_attrs = {}
     error = False
-    if settings.SHIB_MULTISCHOOL:
+    if getattr(settings, 'SHIB_MULTISCHOOL', False):
         school = META.get('school_identifier_attribute')  # This probably isn't correct. Fix it later.
         mapping = json.loads(settings.PATH_TO_SHIB_SETTINGS)[school]
     else:
-        mapping = settings.SHIB_ATTRIBUTE_MAP
+        mapping = getattr(settings, 'SHIB_ATTRIBUTE_MAP', DEFAULT_ATTRIBUTE_MAP)
 
-    for header, attr in mappings.items():
+    for header, attr in mapping.items():
         required, name = attr
         values = META.get(header, None)
         value = None
@@ -40,7 +51,7 @@ def parse_attributes(META):
                 value = values.split(';')[0]
             except:
                 value = values
-                
+
         shib_attrs[name] = value
         if not value or value == '':
             if required:
@@ -62,15 +73,11 @@ def build_shib_url(request, target, entityid=None):
 
 def ensure_shib_session(request):
     if 'HTTP_SHIB_SESSION_ID' in request.META and request.META['HTTP_SHIB_SESSION_ID']:
-        
-    
         attr, error = parse_attributes(request.META)
         if error:
-            return render_to_response('shibboleth/attribute_error.html', 
-                                      {'shib_attrs': attr}, 
+            return render_to_response('shibboleth/attribute_error.html',
+                                      {'shib_attrs': attr},
                                       context_instance=RequestContext(request))
         return None
     else:
         return HttpResponseRedirect(build_shib_url(request, request.build_absolute_uri()))
-    
-

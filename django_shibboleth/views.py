@@ -18,13 +18,16 @@
 from django.http import HttpResponseRedirect, HttpResponseForbidden
 from django.template import loader, RequestContext
 from django.shortcuts import render_to_response
-from django.contrib.auth import login
+from django.contrib.auth import login, authenticate
 from django.contrib.auth.models import User
 from django.conf import settings
+from django.contrib import auth
 
-from utils import parse_attributes
-from forms import BaseRegisterForm
-from signals import shib_logon_done
+from django_shibboleth.utils import parse_attributes
+from django_shibboleth.signals import shib_logon_done
+
+
+SHIB_USERNAME = getattr(settings, "SHIB_USERNAME", "shared_token")
 
 
 def render_forbidden(*args, **kwargs):
@@ -33,73 +36,32 @@ def render_forbidden(*args, **kwargs):
                                  **httpresponse_kwargs)
 
 
-def shib_register(request, RegisterForm=BaseRegisterForm,
-                  register_template_name='shibboleth/register.html'):
+def shib_login(request, user_model=None):
+    redirect_url = request.REQUEST.get('next', settings.LOGIN_REDIRECT_URL)
+    if request.user.is_authenticated():
+        return HttpResponseRedirect(redirect_url)
 
     attr, error = parse_attributes(request.META)
-
     was_redirected = False
     if "next" in request.REQUEST:
         was_redirected = True
-    redirect_url = request.REQUEST.get('next', settings.LOGIN_REDIRECT_URL)
+
     context = {'shib_attrs': attr,
                'was_redirected': was_redirected}
     if error:
-        return render_forbidden('shibboleth/attribute_error.html',
-                                  context,
-                                  context_instance=RequestContext(request))
-    try:
-        username = attr[settings.SHIB_USERNAME]
-        # TODO this should log a misconfiguration.
-    except:
-        return render_forbidden('shibboleth/attribute_error.html',
-                                  context,
-                                  context_instance=RequestContext(request))
+        return render_forbidden('shibboleth/attribute_error.html', context,
+                                context_instance=RequestContext(request))
 
-    if not attr[settings.SHIB_USERNAME] or attr[settings.SHIB_USERNAME] == '':
-        return render_forbidden('shibboleth/attribute_error.html',
-                                  context,
-                                  context_instance=RequestContext(request))
-
-    if request.method == 'POST':
-        form = RegisterForm(request.POST)
-        if form.is_valid():
-            user = form.save(attr)
-    try:
-        user = User.objects.get(username=attr[settings.SHIB_USERNAME])
-    except User.DoesNotExist:
-        form = RegisterForm()
-        context = {'form': form,
-                   'next': redirect_url,
-                   'shib_attrs': attr,
-                   'was_redirected': was_redirected}
-        return render_to_response(register_template_name,
-                                  context,
-                                  context_instance=RequestContext(request))
-
-    user.set_unusable_password()
-    try:
-        user.first_name = attr[settings.SHIB_FIRST_NAME]
-        user.last_name = attr[settings.SHIB_LAST_NAME]
-        user.email = attr[settings.SHIB_EMAIL]
-    except:
-        pass
-    user.save()
-
-    user.backend = 'django.contrib.auth.backends.ModelBackend'
-    login(request, user)
-    shib_logon_done.send(sender=shib_register, user=user, shib_attrs=attr)
-
-    if not redirect_url or '//' in redirect_url or ' ' in redirect_url:
-        redirect_url = settings.LOGIN_REDIRECT_URL
-
-    return HttpResponseRedirect(redirect_url)
+    user = authenticate(remote_user=attr[SHIB_USERNAME], shib_meta=attr, user_model=user_model)
+    if user:
+        login(request, user)
+        shib_logon_done.send(sender=shib_login, user=user, shib_attrs=attr, user_model=user_model)
+        return HttpResponseRedirect(redirect_url)
+    return HttpResponseForbidden("Access Forbidden")
 
 
 def shib_meta(request):
-
     meta_data = request.META.items()
-
     return render_to_response('shibboleth/meta.html',
                               {'meta_data': meta_data},
                               context_instance=RequestContext(request))
